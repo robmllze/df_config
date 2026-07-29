@@ -19,7 +19,7 @@ funding:
   - https://www.patreon.com/c/robelator
   - https://github.com/sponsors/robelator
 description: A package that provides methods to load configuration data and access it at runtime.
-version: 0.8.0
+version: 0.8.1
 topics:
   - cache
   - json

@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.1]
+
+- feat: Add `versionedTranslationKey(key, source)`, `translationSourceHash(source)`, and `kTranslationVersionSeparator` — a content-addressed key convention for versioned translation storage (`<key>@@<hash(sourceText)>`). Lives here rather than in `df_localization` so pure-Dart backends can key server-side translation maps with the exact convention the Flutter client resolves against. The hash is deterministic across platforms (web-safe integer math) and pinned by a golden test — do not change the algorithm.
+
 ## [0.8.0]
 
 - Released @ 5/2026 (UTC)

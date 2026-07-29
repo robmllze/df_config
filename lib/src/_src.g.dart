@@ -19,4 +19,5 @@ export 'support/cf_on_string_ext.dart';
 export './support/config_file_type.dart';
 export './support/pattern_settings.dart';
 export './support/translation_file_reader.dart';
+export './support/versioned_translation_key.dart';
 export 'support/tr_on_string_ext.dart';
