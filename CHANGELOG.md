@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.2]
+
+- fix: `Config.map`'s auto-wrap (`_wrapIfNeeded`) is now all-or-nothing instead of bracketing each delimiter independently. Previously an input that already ended in the closing token — every inline ICU plural template, e.g. `{count, plural, other{# items}}` — got a lone `{{` prepended with no matching `}}`, producing the unbalanced `{{{…}}`; the pattern engine then mangled the braces and downstream consumers such as an ICU `MessageFormat` build threw `mismatched { or }`. Auto-wrap now fires only for a bare key or a `default||key` expression and leaves any input that already carries partial delimiter structure (a lone `{`/`}`) without the key delimiter untouched — so `.tr()` passes inline ICU templates through verbatim. Fixes greyed screens in host apps that render an ICU plural before a config is installed or through a mapper-less `FileConfig`.
+
 ## [0.8.1]
 
 - feat: Add `versionedTranslationKey(key, source)`, `translationSourceHash(source)`, and `kTranslationVersionSeparator` — a content-addressed key convention for versioned translation storage (`<key>@@<hash(sourceText)>`). Lives here rather than in `df_localization` so pure-Dart backends can key server-side translation maps with the exact convention the Flutter client resolves against. The hash is deterministic across platforms (web-safe integer math) and pinned by a golden test — do not change the algorithm.

@@ -101,6 +101,27 @@ void main() {
       expect(c.map<String>('Default||name'), 'World');
     });
 
+    test('does not half-wrap an inline ICU template ending in }}', () {
+      // An inline ICU plural template contains the closing delimiter `}}`
+      // but no opening `{{`. It must pass through untouched — never get a
+      // lone `{{` prepended, which would produce the unbalanced
+      // `{{{count, plural, ...}}` and corrupt the template downstream.
+      const icu = '{count, plural, one{# item} other{# items}}';
+      expect(c.map<String>(icu), icu);
+    });
+
+    test('does not half-wrap input containing only the opening delimiter', () {
+      const input = '{{name} trailing';
+      expect(c.map<String>(input), input);
+    });
+
+    test('still wraps a {secondary}||key expression so the key resolves', () {
+      // The braces make `{X}` the default; the `||` marks `name` as the
+      // key. Because the key delimiter is present, the whole expression is
+      // wrapped and the key wins over the braced default.
+      expect(c.map<String>('{X}||name'), 'World');
+    });
+
     test('preferKey overrides the parsed key', () {
       c.setFields({'name': 'World', 'other': 'Other'});
       expect(

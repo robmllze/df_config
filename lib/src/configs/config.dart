@@ -133,6 +133,7 @@ class Config<TConfigRef extends ConfigRef<dynamic, dynamic>> extends Equatable {
       value,
       opening: effectiveSettings.opening,
       closing: effectiveSettings.closing,
+      delimiter: effectiveSettings.delimiter,
     );
     final replaced = replacePatterns(
       wrapped,
@@ -155,22 +156,38 @@ class Config<TConfigRef extends ConfigRef<dynamic, dynamic>> extends Equatable {
 
 // ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 
-/// Wraps [input] with [opening]/[closing] when it does not already contain
-/// either token. Inputs that already contain a placeholder delimiter (in
-/// either direction) are left alone so existing patterns are not nested
-/// inadvertently.
+/// Wraps [input] with [opening]/[closing] so a bare key resolves as a
+/// single placeholder, e.g. `Default||name` → `{{Default||name}}`.
+///
+/// Wrapping is **all-or-nothing** — it either brackets both sides or
+/// leaves the input completely untouched. It never brackets one side
+/// only, which would unbalance the delimiters (prepending a lone `{{`
+/// to a string that already ends in `}}` yields `{{{…}}` — a corruption
+/// the pattern engine then mangles and downstream consumers such as an
+/// ICU `MessageFormat` build reject as mismatched braces).
+///
+/// The input is left untouched when it already carries pattern structure
+/// of its own:
+///  - It contains a full [opening] or [closing] token (already a
+///    placeholder — do not nest it).
+///  - It carries a *partial* delimiter (a lone `{`/`}` when the
+///    delimiters are `{{`/`}}`) without the key [delimiter] (`||`). That
+///    marks a template destined for the other resolution pass — `tr()`'s
+///    single-brace secondary pass — or an inline ICU plural such as
+///    `{count, plural, other{# items}}`. A `default||key` expression
+///    like `{TEST}||country`, by contrast, *does* carry the key
+///    delimiter and is wrapped so `country` resolves as the key.
 String _wrapIfNeeded(
   String input, {
   required String opening,
   required String closing,
+  required String delimiter,
 }) {
   if (opening.isEmpty || closing.isEmpty) return input;
-  var output = input;
-  if (!input.contains(opening)) {
-    output = '$opening$output';
-  }
-  if (!input.contains(closing)) {
-    output = '$output$closing';
-  }
-  return output;
+  if (input.contains(opening) || input.contains(closing)) return input;
+  final delimiterChars = '$opening$closing'.split('').toSet();
+  final hasPartialDelimiter = delimiterChars.any(input.contains);
+  final hasKeyDelimiter = delimiter.isNotEmpty && input.contains(delimiter);
+  if (hasPartialDelimiter && !hasKeyDelimiter) return input;
+  return '$opening$input$closing';
 }
