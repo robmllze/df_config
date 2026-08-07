@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.3]
+
+- chore: bump `df_string` constraint to `^0.4.0`. df_string 0.4.0 changes case-conversion digit-boundary handling (`phone_e164` instead of `phone_e_164`); df_config does not use the affected `String` case APIs directly, so this is a dependency-range update only.
+
 ## [0.8.2]
 
 - fix: `Config.map`'s auto-wrap (`_wrapIfNeeded`) is now all-or-nothing instead of bracketing each delimiter independently. Previously an input that already ended in the closing token — every inline ICU plural template, e.g. `{count, plural, other{# items}}` — got a lone `{{` prepended with no matching `}}`, producing the unbalanced `{{{…}}`; the pattern engine then mangled the braces and downstream consumers such as an ICU `MessageFormat` build threw `mismatched { or }`. Auto-wrap now fires only for a bare key or a `default||key` expression and leaves any input that already carries partial delimiter structure (a lone `{`/`}`) without the key delimiter untouched — so `.tr()` passes inline ICU templates through verbatim. Fixes greyed screens in host apps that render an ICU plural before a config is installed or through a mapper-less `FileConfig`.
