@@ -107,12 +107,10 @@ String replacePatterns(
   // normalisation) gets a consistent fold across both key parsing and
   // data lookup.
   Map<dynamic, dynamic>? foldedCache;
-  Map<dynamic, dynamic> lookup() {
-    if (settings.caseSensitive) return data;
-    return foldedCache ??= data.map(
-      (k, v) => MapEntry(settings.foldKey(k.toString()), v),
-    );
-  }
+  Map<dynamic, dynamic> lookup() => foldedCache ??= foldLookupKeys(
+        data,
+        settings,
+      );
 
   final out = StringBuffer();
   var cursor = 0;
@@ -126,16 +124,64 @@ String replacePatterns(
     }
     out.write(input.substring(cursor, match.start));
     final body = match.group(1)!;
-    final p = getKeyAndDefaultValue(body, settings, preferKey: preferKey);
-    final suggested = lookup()[p.key];
-    final replacement = _safeCallback(settings, p, suggested) ??
-        suggested?.toString() ??
-        p.defaultValue;
-    out.write(replacement);
+    out.write(
+      resolvePlaceholderBody(
+        body,
+        lookup(),
+        preferKey: preferKey,
+        settings: settings,
+      ),
+    );
     cursor = match.end;
   }
   out.write(input.substring(cursor));
   return out.toString();
+}
+
+// ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+/// Case-folds [data]'s keys per [settings] so lookups match the folded
+/// keys [getKeyAndDefaultValue] produces. Returns [data] unchanged when
+/// the settings are case-sensitive.
+///
+/// Callers that resolve many placeholders should cache the result — this
+/// is O(n) in the map size and rebuilding it per placeholder would make
+/// a whole-string pass O(n*m).
+@internal
+Map<dynamic, dynamic> foldLookupKeys(
+  Map<dynamic, dynamic> data,
+  PatternSettings settings,
+) {
+  if (settings.caseSensitive) return data;
+  return data.map((k, v) => MapEntry(settings.foldKey(k.toString()), v));
+}
+
+/// Resolves ONE placeholder body — the text between the delimiters, or
+/// an entire input that is conceptually a single placeholder — to its
+/// replacement.
+///
+/// [lookup] must already be folded via [foldLookupKeys].
+///
+/// This is the whole of a placeholder's value chain in one place:
+/// [PatternSettings.callback] first, then the looked-up value, then the
+/// embedded default. It exists as its own function because there are
+/// two callers with genuinely different framing, and they used to
+/// disagree: [replacePatterns] resolves bodies it found with a regex,
+/// while [Config.map] resolves an input it already KNOWS is one whole
+/// placeholder and must not re-parse for delimiters. Sharing the chain
+/// keeps a future change to it from landing on only one of them.
+@internal
+String resolvePlaceholderBody(
+  String body,
+  Map<dynamic, dynamic> lookup, {
+  String? preferKey,
+  required PatternSettings settings,
+}) {
+  final p = getKeyAndDefaultValue(body, settings, preferKey: preferKey);
+  final suggested = lookup[p.key];
+  return _safeCallback(settings, p, suggested) ??
+      suggested?.toString() ??
+      p.defaultValue;
 }
 
 // ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░

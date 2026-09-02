@@ -27,6 +27,69 @@ FileConfig _yaml(String tag, String body) {
 void main() {
   setUp(TranslationManager.resetForTesting);
 
+  group('String.tr — a template that STARTS with a placeholder', () {
+    // Regression: `'{X} rest||key'` used to render as `'X} rest'` — the
+    // leading `{` eaten, the `}` left behind, and no substitution. The cause
+    // was `Config.map` bracketing a `default||key` input into
+    // `'{{{X} rest||key}}'` and handing it back to `replacePatterns`, whose
+    // opening delimiter is matched greedily (`\{\{+`, so that `{{{x}}}` reads
+    // as one placeholder). That greedy opening swallowed the payload's own
+    // `{`, while the payload's `}` survived because it was not adjacent to
+    // the closing `}}`.
+    //
+    // Only templates that START with a placeholder hit it: with any literal
+    // text in front, the wrapped `{{` and the payload's `{` are not adjacent,
+    // so the greedy opening has nothing extra to eat. That asymmetry is why
+    // it read as a mystery rather than a bug — which is exactly what these
+    // tests exist to prevent recurring.
+
+    test('leading placeholder is substituted, not half-eaten', () async {
+      await TranslationManager.setConfig(_yaml('en', 'other: X'));
+      expect(
+        '{__X__} rest||missing'.tr(args: {'__X__': 'VAL'}),
+        'VAL rest',
+      );
+    });
+
+    test('a placeholder is the WHOLE default value', () async {
+      await TranslationManager.setConfig(_yaml('en', 'other: X'));
+      expect('{__X__}||missing'.tr(args: {'__X__': 'VAL'}), 'VAL');
+    });
+
+    test('every placeholder resolves, not just the ones after the first',
+        () async {
+      await TranslationManager.setConfig(_yaml('en', 'other: X'));
+      expect(
+        '{__A__} and {__B__}||missing'.tr(args: {'__A__': '1', '__B__': '2'}),
+        '1 and 2',
+      );
+    });
+
+    test('a leading placeholder still loses to a real translation', () async {
+      // The default value is only a fallback: when the key IS in the
+      // translation map the whole string is replaced, placeholder and all.
+      await TranslationManager.setConfig(_yaml('en', 'country: AU'));
+      expect('{__X__} rest||country'.tr(args: {'__X__': 'VAL'}), 'AU');
+    });
+
+    test('leading text behaves identically (the case that always worked)',
+        () async {
+      await TranslationManager.setConfig(_yaml('en', 'other: X'));
+      expect(
+        'lead {__X__} rest||missing'.tr(args: {'__X__': 'VAL'}),
+        'lead VAL rest',
+      );
+    });
+
+    test('no key delimiter is unaffected', () async {
+      // Without `||key` the input is never wrapped, so it takes the
+      // secondary-pass path and always worked. Pinned so a future change to
+      // the wrap rule cannot quietly move this case.
+      await TranslationManager.setConfig(_yaml('en', 'other: X'));
+      expect('{__X__} rest'.tr(args: {'__X__': 'VAL'}), 'VAL rest');
+    });
+  });
+
   group('String.tr — primary pattern pass', () {
     test('substitutes via the active translation map', () async {
       await TranslationManager.setConfig(_yaml('en', 'country: AU'));

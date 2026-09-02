@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.4]
+
+- fix: a translation template that **starts** with a placeholder is no longer half-eaten. `'{__X__} rest||key'.tr(args: …)` returned `__X__} rest` — leading brace consumed, closing brace stranded, no substitution — while the identical template with any literal text in front (`'lead {__X__} rest||key'`) worked. Cause: `Config.map` bracketed a `default||key` input into `'{{{__X__} rest||key}}'` and handed it back to `replacePatterns`, whose opening delimiter is matched greedily (`\{\{+`, deliberately, so `{{{x}}}` reads as one placeholder). The greedy opening swallowed the payload's own `{`; the payload's `}` survived because it was not adjacent to the closing `}}`. `Config.map` now resolves a wrapped input directly — it is one whole-string placeholder by construction, so re-parsing it for delimiters was both wasteful and lossy. `_wrapIfNeeded` reports whether it wrapped rather than callers inferring it, and the placeholder value chain (`callback` → looked-up value → embedded default) is extracted to `resolvePlaceholderBody` so both callers share it. Six regression tests pin the shape, including the leading-text case that always worked. No API change; behaviour for every previously-correct input is unchanged.
+
 ## [0.8.3]
 
 - chore: bump `df_string` constraint to `^0.4.0`. df_string 0.4.0 changes case-conversion digit-boundary handling (`phone_e164` instead of `phone_e_164`); df_config does not use the affected `String` case APIs directly, so this is a dependency-range update only.

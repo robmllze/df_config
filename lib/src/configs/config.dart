@@ -129,18 +129,43 @@ class Config<TConfigRef extends ConfigRef<dynamic, dynamic>> extends Equatable {
       args.mapKeys((e) => e.toString()),
     );
     final combined = <dynamic, dynamic>{...parsedFields, ...expandedArgs};
-    final wrapped = _wrapIfNeeded(
+    final wrap = _wrapIfNeeded(
       value,
       opening: effectiveSettings.opening,
       closing: effectiveSettings.closing,
       delimiter: effectiveSettings.delimiter,
     );
-    final replaced = replacePatterns(
-      wrapped,
-      combined,
-      preferKey: preferKey,
-      settings: effectiveSettings,
-    );
+    // A wrapped input is, by construction, ONE placeholder spanning the
+    // whole string — that is the only reason [_wrapIfNeeded] exists.
+    // Resolve it directly instead of bracketing it and asking the regex to
+    // find again what we just decided.
+    //
+    // The round trip was not merely wasteful, it was lossy. `replacePatterns`
+    // matches its opening delimiter greedily (`\{\{+`) so that a genuinely
+    // triple-braced `{{{x}}}` reads as one placeholder. Feed it a wrapped
+    // `'{X} rest||key'` — i.e. `'{{{X} rest||key}}'` — and that greedy opening
+    // swallows the payload's OWN leading `{`, while the payload's `}` survives
+    // because it is not adjacent to the closing `}}`. The body came back as
+    // `X} rest||key`, so the string rendered as `X} rest`: a half-eaten
+    // placeholder that the secondary pass could no longer substitute. Any
+    // template STARTING with a placeholder hit this; one starting with
+    // literal text did not, which is what made it look like a mystery.
+    final String replaced;
+    if (wrap.wrapped) {
+      replaced = resolvePlaceholderBody(
+        value,
+        foldLookupKeys(combined, effectiveSettings),
+        preferKey: preferKey,
+        settings: effectiveSettings,
+      );
+    } else {
+      replaced = replacePatterns(
+        wrap.value,
+        combined,
+        preferKey: preferKey,
+        settings: effectiveSettings,
+      );
+    }
     return letOrNull<T>(replaced) ?? fallback;
   }
 
@@ -156,8 +181,15 @@ class Config<TConfigRef extends ConfigRef<dynamic, dynamic>> extends Equatable {
 
 // ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 
-/// Wraps [input] with [opening]/[closing] so a bare key resolves as a
-/// single placeholder, e.g. `Default||name` → `{{Default||name}}`.
+/// Decides whether [input] is a bare key or `default||key` expression that
+/// should resolve as a single whole-string placeholder, e.g.
+/// `Default||name` → `{{Default||name}}`.
+///
+/// Returns the bracketed string together with **whether it bracketed**.
+/// Callers need that flag rather than comparing strings: a wrapped input is
+/// one placeholder spanning the whole value and must be resolved as such,
+/// never re-parsed for delimiters — see [Config.map] for what re-parsing
+/// cost.
 ///
 /// Wrapping is **all-or-nothing** — it either brackets both sides or
 /// leaves the input completely untouched. It never brackets one side
@@ -177,17 +209,21 @@ class Config<TConfigRef extends ConfigRef<dynamic, dynamic>> extends Equatable {
 ///    `{count, plural, other{# items}}`. A `default||key` expression
 ///    like `{TEST}||country`, by contrast, *does* carry the key
 ///    delimiter and is wrapped so `country` resolves as the key.
-String _wrapIfNeeded(
+({String value, bool wrapped}) _wrapIfNeeded(
   String input, {
   required String opening,
   required String closing,
   required String delimiter,
 }) {
-  if (opening.isEmpty || closing.isEmpty) return input;
-  if (input.contains(opening) || input.contains(closing)) return input;
+  ({String value, bool wrapped}) unchanged() => (
+        value: input,
+        wrapped: false,
+      );
+  if (opening.isEmpty || closing.isEmpty) return unchanged();
+  if (input.contains(opening) || input.contains(closing)) return unchanged();
   final delimiterChars = '$opening$closing'.split('').toSet();
   final hasPartialDelimiter = delimiterChars.any(input.contains);
   final hasKeyDelimiter = delimiter.isNotEmpty && input.contains(delimiter);
-  if (hasPartialDelimiter && !hasKeyDelimiter) return input;
-  return '$opening$input$closing';
+  if (hasPartialDelimiter && !hasKeyDelimiter) return unchanged();
+  return (value: '$opening$input$closing', wrapped: true);
 }
